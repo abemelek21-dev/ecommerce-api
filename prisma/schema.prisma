@@ -1,0 +1,293 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+// ========================================
+// USER MODEL
+// ========================================
+model User {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  email         String    @unique
+  password      String
+  firstName     String
+  lastName      String
+  phone         String?
+  role          Role      @default(CUSTOMER)
+  isActive      Boolean   @default(true)
+  
+  // Relations
+  orders        Order[]
+  cart          Cart?
+  reviews       Review[]
+  addresses     Address[]
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("users")
+}
+
+// ========================================
+// ADDRESS MODEL
+// ========================================
+model Address {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String   @db.ObjectId
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  fullName      String
+  phone         String
+  addressLine1  String
+  addressLine2  String?
+  city          String
+  state         String
+  country       String
+  zipCode       String
+  isDefault     Boolean  @default(false)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("addresses")
+}
+
+// ========================================
+// CATEGORY MODEL
+// ========================================
+model Category {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  name          String    @unique
+  slug          String    @unique
+  description   String?
+  imageUrl      String?
+  parentId      String?   @db.ObjectId
+  parent        Category? @relation("CategoryToCategory", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children      Category[] @relation("CategoryToCategory")
+  
+  products      Product[]
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("categories")
+}
+
+// ========================================
+// PRODUCT MODEL
+// ========================================
+model Product {
+  id            String      @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  slug          String      @unique
+  description   String
+  price         Float
+  comparePrice  Float?
+  cost          Float?
+  sku           String      @unique
+  barcode       String?
+  stock         Int         @default(0)
+  lowStockThreshold Int     @default(10)
+  
+  // Product details
+  weight        Float?
+  dimensions    String?
+  imageUrl      String?
+  images        String[]
+  
+  // Status
+  isActive      Boolean     @default(true)
+  isFeatured    Boolean     @default(false)
+  
+  // Category relationship
+  categoryId    String      @db.ObjectId
+  category      Category    @relation(fields: [categoryId], references: [id])
+  
+  // Relations
+  orderItems    OrderItem[]
+  cartItems     CartItem[]
+  reviews       Review[]
+  
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@map("products")
+}
+
+// ========================================
+// ORDER MODEL
+// ========================================
+model Order {
+  id              String       @id @default(auto()) @map("_id") @db.ObjectId
+  orderNumber     String       @unique
+  
+  // User relationship
+  userId          String       @db.ObjectId
+  user            User         @relation(fields: [userId], references: [id])
+  
+  // Order details
+  status          OrderStatus  @default(PENDING)
+  paymentStatus   PaymentStatus @default(PENDING)
+  paymentMethod   PaymentMethod?
+  
+  // Amounts
+  subtotal        Float
+  tax             Float        @default(0)
+  shippingCost    Float        @default(0)
+  discount        Float        @default(0)
+  totalAmount     Float
+  
+  // Shipping info (stored as JSON)
+  shippingAddress Json
+  billingAddress  Json?
+  
+  // Tracking
+  trackingNumber  String?
+  shippedAt       DateTime?
+  deliveredAt     DateTime?
+  cancelledAt     DateTime?
+  cancellationReason String?
+  
+  // Notes
+  customerNotes   String?
+  adminNotes      String?
+  
+  // Relations
+  items           OrderItem[]
+  
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@map("orders")
+}
+
+// ========================================
+// ORDER ITEM MODEL
+// ========================================
+model OrderItem {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  
+  // Order relationship
+  orderId       String   @db.ObjectId
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  
+  // Product relationship
+  productId     String   @db.ObjectId
+  product       Product  @relation(fields: [productId], references: [id])
+  
+  // Snapshot of product at time of order
+  productName   String
+  productSku    String
+  productImage  String?
+  
+  // Pricing
+  quantity      Int
+  price         Float
+  total         Float
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("order_items")
+}
+
+// ========================================
+// CART MODEL
+// ========================================
+model Cart {
+  id            String     @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String     @unique @db.ObjectId
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  items         CartItem[]
+  
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@map("carts")
+}
+
+// ========================================
+// CART ITEM MODEL
+// ========================================
+model CartItem {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  
+  cartId        String   @db.ObjectId
+  cart          Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  
+  productId     String   @db.ObjectId
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  quantity      Int      @default(1)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("cart_items")
+}
+
+// ========================================
+// REVIEW MODEL
+// ========================================
+model Review {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  
+  userId        String   @db.ObjectId
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  productId     String   @db.ObjectId
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  rating        Int
+  title         String?
+  comment       String?
+  isVerified    Boolean  @default(false)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("reviews")
+}
+
+// ========================================
+// ENUMS
+// ========================================
+enum Role {
+  CUSTOMER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CREDIT_CARD
+  DEBIT_CARD
+  PAYPAL
+  BANK_TRANSFER
+  CASH_ON_DELIVERY
+  CHAPA
+  TELEBIRR
+}
