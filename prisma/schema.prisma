@@ -21,6 +21,7 @@ model User {
   phone         String?
   role          Role      @default(CUSTOMER)
   isActive      Boolean   @default(true)
+  refreshToken  String?   // ← Add this line!
   
   // Relations
   orders        Order[]
