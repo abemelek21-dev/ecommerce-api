@@ -68,6 +68,7 @@ model Category {
   slug          String    @unique
   description   String?
   imageUrl      String?
+  images        String[]
   parentId      String?   @db.ObjectId
   parent        Category? @relation("CategoryToCategory", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   children      Category[] @relation("CategoryToCategory")

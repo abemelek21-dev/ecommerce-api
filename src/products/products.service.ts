@@ -9,10 +9,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { FilterProductDto, SortBy, SortOrder } from './dto/filter-product.dto';
+import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 
 @Injectable()
 export class ProductsService {
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private cloudinary: CloudinaryService
+    ) { }
 
     /**
      * CREATE PRODUCT
@@ -23,7 +27,11 @@ export class ProductsService {
      * - Validate category exists
      * - Set default values
      */
-    async create(createProductDto: CreateProductDto) {
+    async create(
+        createProductDto: CreateProductDto,
+        mainImage?: Express.Multer.File,      // ← Main product image
+        additionalImages?: Express.Multer.File[]  // ← Additional images
+    ) {
         // Generate slug if not provided
         const slug = createProductDto.slug ?
             createProductDto.slug : this.generateSlug(createProductDto.name);
@@ -38,10 +46,10 @@ export class ProductsService {
 
         // Check if slug already exists
         const existingSlug = await this.prisma.product.findUnique({
-            where: { slug: createProductDto.slug },
+            where: { slug },
         });
         if (existingSlug) {
-            throw new ConflictException(`Product with slug "${createProductDto.slug}" already exists`);
+            throw new ConflictException(`Product with slug "${slug}" already exists`);
         }
 
         // Validate category exists
@@ -57,21 +65,38 @@ export class ProductsService {
             throw new BadRequestException('Compare price must be greater than selling price');
         }
 
+        // Upload main image to Cloudinary
+        let imageUrl: string | undefined;
+        if (mainImage) {
+            const uploadResult = await this.cloudinary.uploadImage(mainImage, 'products');
+            imageUrl = uploadResult.secure_url;
+        }
+
+        // Upload additional images to Cloudinary
+        let imagesUrls: string[] = [];
+        if (additionalImages && additionalImages.length > 0) {
+            imagesUrls = await this.cloudinary.uploadMultipleImages(additionalImages, 'products');
+        }
+
         // Create product
         const product = await this.prisma.product.create({
             data: {
                 name: createProductDto.name,
-                slug,                                               // ✅ now definitely a string
+                slug,
                 description: createProductDto.description,
                 price: createProductDto.price,
                 comparePrice: createProductDto.comparePrice,
                 cost: createProductDto.cost,
                 sku: createProductDto.sku,
+                barcode: createProductDto.barcode,
                 stock: createProductDto.stock,
-                images: createProductDto.images ?? [],
+                lowStockThreshold: createProductDto.lowStockThreshold ?? 10,
+                weight: createProductDto.weight,
+                dimensions: createProductDto.dimensions,
+                imageUrl,                                    // ← Main image URL
+                images: imagesUrls,                          // ← Additional images URLs
                 isActive: createProductDto.isActive ?? true,
                 isFeatured: createProductDto.isFeatured ?? false,
-                lowStockThreshold: createProductDto.lowStockThreshold ?? 10,
                 categoryId: createProductDto.categoryId,
             },
             include: {
@@ -288,7 +313,12 @@ export class ProductsService {
      * - Validate SKU/slug uniqueness if changed
      * - Validate price logic
      */
-    async update(id: string, updateProductDto: UpdateProductDto) {
+    async update(
+        id: string,
+        updateProductDto: UpdateProductDto,
+        mainImage?: Express.Multer.File,
+        additionalImages?: Express.Multer.File[]
+    ) {
         // Check if product exists
         const existingProduct = await this.prisma.product.findUnique({
             where: { id },
@@ -336,10 +366,37 @@ export class ProductsService {
             throw new BadRequestException('Compare price must be greater than selling price');
         }
 
+        // Handle main image update
+        let imageUrl = existingProduct.imageUrl
+        if (mainImage) {
+            // Delete old image from Cloudinary if exists
+            if (existingProduct.imageUrl) {
+                const publicId = this.extractPublicId(existingProduct.imageUrl)
+                await this.cloudinary.deleteImage(publicId)
+            }
+            const uploadResult = await this.cloudinary.uploadImage(mainImage, 'product')
+            imageUrl = uploadResult.secure_url
+        }
+        // Handle additional images update
+        let imagesUrls = existingProduct.images;
+        if (additionalImages && additionalImages.length > 0) {
+            // Delete old additional images from Cloudinary
+            for (const imageUrl of existingProduct.images) {
+                const publicId = this.extractPublicId(imageUrl);
+                await this.cloudinary.deleteImage(publicId);
+            }
+
+            // Upload new images
+            imagesUrls = await this.cloudinary.uploadMultipleImages(additionalImages, 'products');
+        }
         // Update product
         const product = await this.prisma.product.update({
             where: { id },
-            data: updateProductDto,
+            data: {
+                ...updateProductDto,
+                imageUrl,
+                images: imagesUrls
+            },
             include: {
                 category: {
                     select: {
@@ -559,7 +616,7 @@ export class ProductsService {
      * BULK UPDATE STOCK (for orders)
      */
     async bulkUpdateStock(updates: { productId: string; quantity: number }[]) {
-        const results:Awaited<ReturnType<typeof this.updateStock>>[] = [];
+        const results: Awaited<ReturnType<typeof this.updateStock>>[] = [];
 
         for (const update of updates) {
             const product = await this.updateStock(update.productId, -update.quantity);
@@ -567,6 +624,14 @@ export class ProductsService {
         }
 
         return results;
+    }
+    /**
+         * HELPER: Extract Cloudinary public ID from URL
+         */
+    private extractPublicId(url: string): string {
+        const parts = url.split('/');
+        const filename = parts[parts.length - 1];
+        return `products/${filename.split('.')[0]}`;
     }
 
     /**
