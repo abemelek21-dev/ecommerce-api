@@ -11,6 +11,7 @@ import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { CategoriesController } from './categories/categories.controller';
 import { CategoriesService } from './categories/categories.service';
 import { CategoriesModule } from './categories/categories.module';
+import { CartModule } from './cart/cart.module';
 
 @Module({
   imports: [
@@ -22,7 +23,8 @@ import { CategoriesModule } from './categories/categories.module';
     UserModule,
     AuthModule,
     CloudinaryModule,
-    CategoriesModule
+    CategoriesModule,
+    CartModule
   ],
   controllers: [AppController, CategoriesController],
   providers: [AppService, CloudinaryService, CategoriesService,
