@@ -232,7 +232,7 @@ export class CartService {
             // Check if product still exists and is active
             if (!item.product.isActive) {
                 invalidItems.push({
-                    productName: item,
+                    productName: item.product.name,
                     reason: 'Product is no longer available',
                 });
                 continue;

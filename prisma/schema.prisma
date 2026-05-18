@@ -155,6 +155,7 @@ model Order {
   deliveredAt     DateTime?
   cancelledAt     DateTime?
   cancellationReason String?
+  cancelledBy  String?
   
   // Notes
   customerNotes   String?
